@@ -411,144 +411,123 @@ export async function registerParent(name, email, password) {
 ---
 
 ## 6. Fluxos do Sistema (MVP)
+## 6.1 Fluxos de Usuário (FINAL)
 
-### 6.1 Fluxo do pai (solicitação de matrícula)
+### 6.1.1 Pais/Responsáveis
 
-```
-1. Pai faz login (Firebase Auth)
-2. Pai visualiza lista de turmas disponíveis (nome, período — sem vagas)
-3. Pai preenche formulário:
-   - Nome do aluno
-   - Turma desejada
-4. Pai envia solicitação
-   → Cria documento em enrollmentRequests com status "pending"
-5. Pai acompanha status da solicitação (pending / approved / rejected)
-6. Pai recebe notificação (FCM) quando status mudar
-```
+1. **Login/Cadastro** — Firebase Authentication (email/senha); sessão persistida
+   localmente pelo SDK (funciona offline após primeiro login).
+2. **Consulta de turmas** — leitura da coleção `classes` via Firestore. A UI
+   exibe apenas `courseName`, `grade`; os campos `totalSpots`/`occupiedSpots`
+   não são exibidos para este papel.
+3. **Solicitação de matrícula** — formulário com nome do aluno (`studentName`)
+   e seleção de turma. Cria documento em `reservations` com `status: "PENDING"`.
+   Funciona online ou offline (o SDK enfileira a escrita automaticamente); a UI
+   mostra a reserva de forma otimista até a confirmação de sincronização.
+4. **Cancelamento** — permitido apenas enquanto `status == "PENDING"`
+   (`updateDoc` simples para `status: "CANCELLED"`, sem transaction).
+5. **Acompanhamento** — `onSnapshot` na(s) reserva(s) do usuário; status
+   atualiza em tempo real (`PENDING` / `APPROVED` / `REJECTED` / `CANCELLED`).
+6. **Notificações** — leitura em tempo real da coleção `notifications`
+   filtrada por `userId` (mudança de status, abertura do período de matrícula).
+   Push real via FCM fica limitado ao registro do token (entrega quando o app
+   está aberto/em primeiro plano); notificação com app fechado é débito técnico
+   fora do escopo do MVP.
 
-### 6.2 Fluxo da coordenação (aprovação/recusa)
+### 6.1.2 Coordenação Escolar
 
-```
-1. Coordenação faz login (Firebase Auth)
-2. Coordenação visualiza lista de solicitações pendentes
-   (com nome do aluno, nome do pai, turma solicitada)
-3. Coordenação visualiza vagas disponíveis da turma (totalSpots - occupiedSpots)
-4. Coordenação decide:
-   a) APROVAR
-      → Executa transaction:
-         - Verifica se ainda há vaga disponível
-         - Incrementa occupiedSpots
-         - Atualiza status da solicitação para "approved"
-      → Dispara notificação FCM ao pai
-   b) RECUSAR
-      → Exige preenchimento de justificativa (rejectionReason)
-      → Atualiza status da solicitação para "rejected"
-      → Dispara notificação FCM ao pai
-```
+1. **Login** — Firebase Authentication; papel definido por
+   `users/{uid}.role == "admin"` (sem Custom Claims no MVP).
+2. **Gestão de turmas** — CRUD simples em `classes`
+   (`courseName`, `grade`, `totalSpots`, `occupiedSpots`).
+3. **Configuração do período de matrícula** — documento único (ex.:
+   `settings/enrollmentPeriod`) com `startDate` e flag `announced`, setada
+   manualmente pela coordenação para disparar a notificação de abertura.
+4. **Gestão de solicitações** — leitura em tempo real (`onSnapshot`) da
+   coleção `reservations`, filtrando `status == "PENDING"`.
 
-### 6.3 Fluxo offline (sincronização)
+   **Aprovar:**
+   - `runTransaction`:
+     1. Lê `classes/{classId}` (`totalSpots`, `occupiedSpots`)
+     2. Incrementa `occupiedSpots`
+     3. Atualiza `reservations.status = "APPROVED"`, `overCapacity` (true se
+        `occupiedSpots > totalSpots` após o incremento), `reviewedBy`, `updatedAt`
+   - Se offline no momento da aprovação: a transaction só é validada na
+     sincronização; se a vaga não existir mais, a transaction falha e a
+     solicitação **retorna à lista de pendentes** com aviso para reavaliação.
+   - Turma cheia não bloqueia a aprovação — só marca `overCapacity: true`.
 
-```
-1. Usuário perde conexão
-2. App continua funcionando com dados em cache (Service Worker + Firestore local)
-3. Usuário realiza ação (ex.: pai cria solicitação; coordenação aprova)
-   → Firestore SDK grava a operação localmente (fila de escrita pendente)
-   → UI reflete a mudança otimisticamente (estado "local", ainda não confirmado)
-4. Conexão retorna
-5. Firestore SDK sincroniza automaticamente a fila de escritas com o servidor
-6. Em caso de aprovação offline:
-   → A transaction de controle de vagas só é validada de fato quando sincronizada
-   → Se a vaga não existir mais no momento da sincronização, a transaction falha
-     e a coordenação deve ser avisada para reavaliar a solicitação
-```
+   **Rejeitar:**
+   - Exige `rejectionReason` não vazio (validado na UI e na Security Rule).
+   - `updateDoc`: `status = "REJECTED"`, `rejectionReason`, `reviewedBy`, `updatedAt`.
 
----
+   Em ambos os casos, um documento é criado em `notifications` para o
+   responsável correspondente.
 
-## 7. Regras de Negócio
+### 6.1.3 Fluxo offline (comum aos dois papéis)
 
-### 7.1 Controle de vagas
-
-- Cada turma (`classes/{classId}`) possui `totalSpots` e `occupiedSpots`.
-- Vagas disponíveis = `totalSpots - occupiedSpots`.
-- Uma solicitação só pode ser **aprovada** se `occupiedSpots < totalSpots` no momento da aprovação.
-- O incremento de `occupiedSpots` **deve** ocorrer dentro de uma `runTransaction`, para evitar condição de corrida quando duas aprovações simultâneas disputam a última vaga.
-
-### 7.2 Máquina de estados da solicitação
-
-```
-pending ──approve──> approved
-   │
-   └──reject────────> rejected (rejectionReason obrigatório)
-```
-
-| Status | Descrição |
-|---|---|
-| `pending` | Estado inicial, aguardando análise da coordenação |
-| `approved` | Vaga confirmada; `occupiedSpots` incrementado |
-| `rejected` | Solicitação recusada; `rejectionReason` preenchido |
-
-- Transições são **unidirecionais** no MVP (não há reversão de `approved`/`rejected` para `pending`).
-- `rejectionReason` é **campo obrigatório** sempre que `status` for definido como `rejected` — validado tanto na UI quanto na Security Rule.
-
-### 7.3 Exemplo de transaction (aprovação com controle de vagas)
-
-```javascript
-import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebase';
-
-export async function approveEnrollmentRequest(requestId, classId, reviewerUid) {
-  const classRef = doc(db, 'classes', classId);
-  const requestRef = doc(db, 'enrollmentRequests', requestId);
-
-  await runTransaction(db, async (transaction) => {
-    const classSnap = await transaction.get(classRef);
-
-    if (!classSnap.exists()) {
-      throw new Error('Turma não encontrada.');
-    }
-
-    const { totalSpots, occupiedSpots } = classSnap.data();
-
-    if (occupiedSpots >= totalSpots) {
-      throw new Error('Não há vagas disponíveis nesta turma.');
-    }
-
-    transaction.update(classRef, {
-      occupiedSpots: occupiedSpots + 1,
-    });
-
-    transaction.update(requestRef, {
-      status: 'approved',
-      reviewedBy: reviewerUid,
-      updatedAt: serverTimestamp(),
-    });
-  });
-}
-```
-
-### 7.4 Exemplo de recusa (com justificativa obrigatória)
-
-```javascript
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebase';
-
-export async function rejectEnrollmentRequest(requestId, reviewerUid, reason) {
-  if (!reason || reason.trim().length === 0) {
-    throw new Error('A justificativa de recusa é obrigatória.');
-  }
-
-  const requestRef = doc(db, 'enrollmentRequests', requestId);
-
-  await updateDoc(requestRef, {
-    status: 'rejected',
-    rejectionReason: reason,
-    reviewedBy: reviewerUid,
-    updatedAt: serverTimestamp(),
-  });
-}
-```
+1. Conexão cai → app continua funcionando com Service Worker (assets) e
+   cache local do Firestore (dados).
+2. Escritas (criar reserva, aprovar, rejeitar, cancelar) são enfileiradas
+   automaticamente pelo SDK do Firestore — sem fila manual.
+3. UI reflete a mudança de forma otimista, marcada como "pendente de
+   sincronização" quando aplicável.
+4. Ao reconectar, o SDK sincroniza a fila automaticamente.
+5. Exceção: uma aprovação feita offline que dependia de uma vaga que já não
+   existe mais falha na sincronização — a UI deve tratar esse erro e devolver
+   a solicitação para a lista de pendentes, avisando a coordenação.
 
 ---
+
+## 7. Regras de Negócio 
+
+**RN01 — Visibilidade de vagas**
+`totalSpots`/`occupiedSpots` ocultados na UI do responsável. *(Observação: é
+proteção de interface, não uma Security Rule por campo — ver risco documentado
+na especificação técnica original, seção "Riscos e Trade-offs".)*
+
+**RN02 — Solicitação sempre permitida**
+O Firestore não bloqueia a criação de `reservations`; toda validação de vaga
+ocorre apenas no momento da aprovação.
+
+**RN03 — Consistência de aprovação**
+Incremento de `occupiedSpots` e atualização de `status` ocorrem dentro de um
+único `runTransaction`, evitando condição de corrida entre aprovações
+simultâneas.
+
+**RN04 — Aprovação além da capacidade**
+Permitida sem bloqueio técnico; grava `overCapacity: true` quando
+`occupiedSpots > totalSpots` após o incremento.
+
+**RN05 — Recusa exige justificativa**
+`rejectionReason` obrigatório, validado na UI e reforçado na Security Rule
+(`request.resource.data.rejectionReason is string && request.resource.data.rejectionReason.size() > 0` quando `status == "REJECTED"`).
+
+**RN06 — Imutabilidade pós-decisão**
+Security Rule permite `update` de `reservations` pela coordenação apenas
+quando `resource.data.status == "PENDING"` — evita reprocessamento
+(ex.: dupla aprovação incrementando vaga duas vezes).
+
+**RN07 — Cancelamento pelo responsável**
+Permitido apenas enquanto `status == "PENDING"`; update simples, sem
+transaction (não há vaga a decrementar nesse estado).
+
+**RN08 — Concorrência**
+Toda alteração de `occupiedSpots` ocorre via Firestore Transaction; não há
+locks explícitos — o próprio Firestore garante atomicidade da transação.
+
+**RN09 — Notificação de abertura do período**
+Disparada quando a coordenação marca `announced: true` no documento de
+configuração; clientes recebem a atualização via `onSnapshot` e geram a
+notificação in-app. Sem Cloud Function/agendamento automático no MVP.
+
+**RN10 — Notificação de mudança de status**
+Documento criado em `notifications` a cada aprovação/rejeição, lido em tempo
+real pelo responsável. Push via FCM limitado à entrega em primeiro plano
+(token registrado, mas sem dispatcher server-side).
+
+
+
 
 ## 8. Integração Firebase
 
