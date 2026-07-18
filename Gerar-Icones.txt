@@ -1,0 +1,27 @@
+App icon for a school enrollment reservation PWA.
+
+Style: flat, modern, clean, slightly warm.
+
+Background color: deep amber #b45309.
+
+Symbol: a simple calendar combined with a checkmark OR a school building icon with a checkmark overlay.
+
+The symbol must represent:
+- reservation / scheduling
+- school / education context
+
+Design rules:
+- white outline or solid white symbol
+- centered composition
+- contained within the inner 80% safe zone
+- balanced and minimal
+
+Constraints:
+- no text
+- no shadows
+- no gradients
+- no complex details
+
+Output:
+- 512x512 resolution
+- optimized for mobile app icon (PWA installable)
