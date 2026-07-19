@@ -1,0 +1,77 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getRole() == 'admin';
+    }
+
+    function isParent() {
+      return isSignedIn() && getRole() == 'parent';
+    }
+
+    // --- users ---
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && request.auth.uid == userId
+                    && request.resource.data.role == 'parent'; // ninguém se autopromove a admin
+      allow update: if isSignedIn() && request.auth.uid == userId
+                    && request.resource.data.role == resource.data.role; // não pode alterar a própria role
+      allow delete: if false;
+    }
+
+    // --- classes ---
+    match /classes/{classId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- reservations ---
+    match /reservations/{reservationId} {
+      allow create: if isParent()
+                    && request.resource.data.parentId == request.auth.uid
+                    && request.resource.data.status == 'PENDING';
+
+      allow read: if isSignedIn() &&
+                  (isAdmin() || resource.data.parentId == request.auth.uid);
+
+      // Coordenação: só pode decidir enquanto ainda está PENDING (RN06)
+      allow update: if (isAdmin()
+                        && resource.data.status == 'PENDING'
+                        && request.resource.data.status in ['APPROVED', 'REJECTED']
+                        && (request.resource.data.status != 'REJECTED'
+                            || (request.resource.data.rejectionReason is string
+                                && request.resource.data.rejectionReason.size() > 0)))
+                    // Pai: só pode cancelar a própria reserva enquanto PENDING (RN07)
+                    || (isSignedIn()
+                        && resource.data.parentId == request.auth.uid
+                        && resource.data.status == 'PENDING'
+                        && request.resource.data.status == 'CANCELLED');
+
+      allow delete: if false;
+    }
+
+    // --- notifications ---
+    match /notifications/{notificationId} {
+      allow create: if isAdmin();
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid; // marcar como lida
+      allow delete: if false;
+    }
+
+    // --- settings ---
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
