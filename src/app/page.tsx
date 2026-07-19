@@ -2,9 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, signInWithEmailAndPassword, onAuthStateChanged, doc, getDoc } from "@/lib/firebase";
 
 export default function Login() {
   const router = useRouter();
@@ -15,7 +13,7 @@ export default function Login() {
 
   useEffect(() => {
     // Redireciona automaticamente se já estiver logado
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
       if (user) {
         setLoading(true);
         try {

@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
+  auth,
+  db,
+  onAuthStateChanged,
+  signOut,
   collection,
   query,
   where,
@@ -13,8 +16,7 @@ import {
   addDoc,
   updateDoc,
   serverTimestamp,
-} from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+} from "@/lib/firebase";
 
 type Tab = "home" | "classes" | "reservations" | "notifications" | "new-reservation";
 
@@ -38,7 +40,7 @@ export default function PaiDashboard() {
 
   // Check auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser: any) => {
       if (!currentUser) {
         router.push("/");
         return;
@@ -64,8 +66,8 @@ export default function PaiDashboard() {
 
     // Listen to Active Classes
     const classesQuery = query(collection(db, "classes"), where("active", "==", true));
-    const unsubscribeClasses = onSnapshot(classesQuery, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const unsubscribeClasses = onSnapshot(classesQuery, (snapshot: any) => {
+      const list = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       setClassesList(list);
     });
 
@@ -74,8 +76,8 @@ export default function PaiDashboard() {
       collection(db, "reservations"),
       where("parentId", "==", user.uid)
     );
-    const unsubscribeReservations = onSnapshot(reservationsQuery, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const unsubscribeReservations = onSnapshot(reservationsQuery, (snapshot: any) => {
+      const list = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       // Sort by date local
       list.sort((a: any, b: any) => {
         const timeA = a.createdAt?.seconds || 0;
@@ -90,8 +92,8 @@ export default function PaiDashboard() {
       collection(db, "notifications"),
       where("userId", "==", user.uid)
     );
-    const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot: any) => {
+      const list = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       list.sort((a: any, b: any) => {
         const timeA = a.createdAt?.seconds || 0;
         const timeB = b.createdAt?.seconds || 0;

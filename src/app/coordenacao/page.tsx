@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
+  auth,
+  db,
+  onAuthStateChanged,
+  signOut,
   collection,
   query,
   where,
@@ -15,8 +18,7 @@ import {
   updateDoc,
   runTransaction,
   serverTimestamp,
-} from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+} from "@/lib/firebase";
 
 type Tab = "home" | "classes" | "pending" | "period";
 
@@ -45,7 +47,7 @@ export default function CoordenacaoDashboard() {
 
   // Check auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser: any) => {
       if (!currentUser) {
         router.push("/");
         return;
@@ -70,15 +72,15 @@ export default function CoordenacaoDashboard() {
     if (!user) return;
 
     // Listen to all classes
-    const unsubscribeClasses = onSnapshot(collection(db, "classes"), (snapshot) => {
-      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const unsubscribeClasses = onSnapshot(collection(db, "classes"), (snapshot: any) => {
+      const list = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       setClassesList(list);
     });
 
     // Listen to pending reservations (ordered oldest first)
     const pendingQuery = query(collection(db, "reservations"), where("status", "==", "PENDING"));
-    const unsubscribePending = onSnapshot(pendingQuery, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const unsubscribePending = onSnapshot(pendingQuery, (snapshot: any) => {
+      const list = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       list.sort((a: any, b: any) => {
         const timeA = a.createdAt?.seconds || 0;
         const timeB = b.createdAt?.seconds || 0;
@@ -88,7 +90,7 @@ export default function CoordenacaoDashboard() {
     });
 
     // Listen to settings/enrollmentPeriod doc
-    const unsubscribeSettings = onSnapshot(doc(db, "settings", "enrollmentPeriod"), (snapshot) => {
+    const unsubscribeSettings = onSnapshot(doc(db, "settings", "enrollmentPeriod"), (snapshot: any) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
         setSettings({
@@ -161,7 +163,7 @@ export default function CoordenacaoDashboard() {
   // Approval/Rejection Actions
   const handleApprove = async (res: any) => {
     try {
-      await runTransaction(db, async (transaction) => {
+      await runTransaction(db, async (transaction: any) => {
         const classRef = doc(db, "classes", res.classId);
         const resRef = doc(db, "reservations", res.id);
 
@@ -191,7 +193,7 @@ export default function CoordenacaoDashboard() {
         });
 
         // Add Notification
-        const notificationRef = doc(collection(db, "notifications"));
+        const notificationRef = doc(db, "notifications", "notif-" + Math.random().toString(36).substring(2, 9));
         transaction.set(notificationRef, {
           userId: res.parentId,
           title: "Reserva de Matrícula Aprovada!",
@@ -212,7 +214,7 @@ export default function CoordenacaoDashboard() {
     if (!rejectingResId || !rejectionReason.trim()) return;
 
     try {
-      const res = pendingReservations.find((r) => r.id === rejectingResId);
+      const res = pendingReservations.find((r: any) => r.id === rejectingResId);
       if (!res) return;
 
       const resRef = doc(db, "reservations", res.id);
