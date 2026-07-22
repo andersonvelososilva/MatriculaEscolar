@@ -35,7 +35,7 @@ export default function PaiDashboard() {
   const notifiedNotifIds = useRef<Set<string>>(new Set());
   const [notificationPermission, setNotificationPermission] = useState<string>("default");
 
-  // Solicitar permissão de notificação no carregamento do painel e manter estado
+  // Solicitar permissão de notificação no carregamento do painel e registrar escuta de atualização do PWA
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
       setNotificationPermission(Notification.permission);
@@ -45,7 +45,42 @@ export default function PaiDashboard() {
         });
       }
     }
+
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+    }
   }, []);
+
+  // Verificar atualizações manualmente
+  const checkUpdates = async () => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+      alert("Atualizações automáticas não suportadas neste navegador.");
+      return;
+    }
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        await registration.update();
+        if (registration.installing || registration.waiting) {
+          alert("Nova versão encontrada! Atualizando o aplicativo...");
+        } else {
+          alert("O seu aplicativo já está atualizado e na versão mais recente!");
+        }
+      } else {
+        alert("Recarregando dados...");
+        window.location.reload();
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Não foi possível verificar no momento. Tente novamente.");
+    }
+  };
 
   // Monitorar quantidade de notificações não lidas e atualizar Badge no ícone do App
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
@@ -263,19 +298,34 @@ export default function PaiDashboard() {
           <h1 className="header-title" style={{ fontSize: "18px" }}>Olá, {user?.name}</h1>
           <p style={{ fontSize: "12px", color: "var(--secondary)" }}>Perfil Responsável</p>
         </div>
-        <button
-          onClick={handleSignOut}
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--danger)",
-            fontWeight: "600",
-            fontSize: "14px",
-            cursor: "pointer",
-          }}
-        >
-          Sair
-        </button>
+        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+          <button
+            onClick={checkUpdates}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--primary)",
+              fontWeight: "600",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            🔄 Atualizar App
+          </button>
+          <button
+            onClick={handleSignOut}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--danger)",
+              fontWeight: "600",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            Sair
+          </button>
+        </div>
       </div>
 
       {notificationPermission !== "granted" && (

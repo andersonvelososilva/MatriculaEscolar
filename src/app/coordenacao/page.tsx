@@ -39,14 +39,49 @@ export default function CoordenacaoDashboard() {
   const [mountTime] = useState(() => Date.now());
   const notifiedResIds = useRef<Set<string>>(new Set());
 
-  // Solicitar permissão de notificação no carregamento do painel
+  // Solicitar permissão de notificação e escutar novas versões do PWA
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
       if (Notification.permission === "default") {
         Notification.requestPermission();
       }
     }
+
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+    }
   }, []);
+
+  // Verificar atualizações manualmente
+  const checkUpdates = async () => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+      alert("Atualizações automáticas não suportadas neste navegador.");
+      return;
+    }
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        await registration.update();
+        if (registration.installing || registration.waiting) {
+          alert("Nova versão encontrada! Atualizando o painel...");
+        } else {
+          alert("O aplicativo da coordenação já está na versão mais recente!");
+        }
+      } else {
+        alert("Recarregando dados...");
+        window.location.reload();
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Não foi possível verificar no momento. Tente novamente.");
+    }
+  };
 
   // Monitorar novas solicitações pendentes e exibir notificações
   useEffect(() => {
@@ -451,19 +486,34 @@ export default function CoordenacaoDashboard() {
           <h1 className="header-title" style={{ fontSize: "18px" }}>Olá, {user?.name}</h1>
           <p style={{ fontSize: "12px", color: "var(--secondary)" }}>Perfil Coordenação</p>
         </div>
-        <button
-          onClick={handleSignOut}
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--danger)",
-            fontWeight: "600",
-            fontSize: "14px",
-            cursor: "pointer",
-          }}
-        >
-          Sair
-        </button>
+        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+          <button
+            onClick={checkUpdates}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--primary)",
+              fontWeight: "600",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            🔄 Atualizar App
+          </button>
+          <button
+            onClick={handleSignOut}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--danger)",
+              fontWeight: "600",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            Sair
+          </button>
+        </div>
       </div>
 
       {/* Main Tab Renderings */}
