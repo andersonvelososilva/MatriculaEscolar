@@ -33,15 +33,31 @@ export default function PaiDashboard() {
 
   const [mountTime] = useState(() => Date.now());
   const notifiedNotifIds = useRef<Set<string>>(new Set());
+  const [notificationPermission, setNotificationPermission] = useState<string>("default");
 
-  // Solicitar permissão de notificação no carregamento do painel
+  // Solicitar permissão de notificação no carregamento do painel e manter estado
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
+      setNotificationPermission(Notification.permission);
       if (Notification.permission === "default") {
-        Notification.requestPermission();
+        Notification.requestPermission().then((permission) => {
+          setNotificationPermission(permission);
+        });
       }
     }
   }, []);
+
+  // Monitorar quantidade de notificações não lidas e atualizar Badge no ícone do App
+  const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && "setAppBadge" in navigator) {
+      if (unreadNotificationsCount > 0) {
+        navigator.setAppBadge(unreadNotificationsCount).catch((e) => console.log("Erro badge:", e));
+      } else {
+        navigator.clearAppBadge().catch((e) => console.log("Erro badge clear:", e));
+      }
+    }
+  }, [unreadNotificationsCount]);
 
   // Monitorar novas notificações do Firestore e exibir notificações nativas
   useEffect(() => {
@@ -64,8 +80,10 @@ export default function PaiDashboard() {
               reg.showNotification(title, {
                 body,
                 icon: "/icons/icon-192.png",
-                vibrate: [200, 100, 200],
+                vibrate: [200, 100, 200, 100, 200, 100, 400],
                 badge: "/icons/icon-192.png",
+                tag: "matricula-alert",
+                renotify: true,
               } as any);
             }).catch(() => {
               new Notification(title, { body, icon: "/icons/icon-192.png" });
@@ -236,7 +254,6 @@ export default function PaiDashboard() {
     );
   }
 
-  const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
 
   return (
     <div className="container animate-fade-in" style={{ paddingBottom: "80px" }}>
@@ -260,6 +277,46 @@ export default function PaiDashboard() {
           Sair
         </button>
       </div>
+
+      {notificationPermission !== "granted" && (
+        <div style={{
+          backgroundColor: notificationPermission === "denied" ? "var(--danger-light)" : "rgba(26, 115, 232, 0.08)",
+          border: `1px solid ${notificationPermission === "denied" ? "rgba(239, 68, 68, 0.2)" : "rgba(26, 115, 232, 0.2)"}`,
+          borderRadius: "var(--radius-md)",
+          padding: "16px",
+          marginTop: "16px",
+          marginBottom: "16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          fontSize: "14px",
+          boxShadow: "var(--shadow-sm)"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: "700", color: notificationPermission === "denied" ? "var(--danger)" : "var(--primary)" }}>
+            <span>{notificationPermission === "denied" ? "🔔 Notificações Bloqueadas" : "🔔 Receber Avisos no Celular"}</span>
+          </div>
+          <p style={{ color: "var(--secondary)", margin: 0, fontSize: "13px", lineHeight: "1.5" }}>
+            {notificationPermission === "denied" 
+              ? "Você desativou as notificações do app. Para não perder avisos de prazos, encerramento de matrículas ou novidades, por favor ative as notificações nas configurações do seu navegador." 
+              : "Ative as notificações para receber avisos sobre encerramento de matrículas, início das aulas e alteração no status de suas solicitações sem precisar abrir o app."}
+          </p>
+          {notificationPermission === "default" && (
+            <button 
+              onClick={() => {
+                if (typeof window !== "undefined" && "Notification" in window) {
+                  Notification.requestPermission().then((permission) => {
+                    setNotificationPermission(permission);
+                  });
+                }
+              }}
+              className="btn btn-primary"
+              style={{ padding: "8px 16px", fontSize: "13px", alignSelf: "flex-start", marginTop: "4px" }}
+            >
+              Ativar Notificações
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Main Tab Renderings */}
       {activeTab === "home" && (

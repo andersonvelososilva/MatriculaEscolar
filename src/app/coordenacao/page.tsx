@@ -31,7 +31,10 @@ export default function CoordenacaoDashboard() {
   // Firestore Data
   const [classesList, setClassesList] = useState<any[]>([]);
   const [pendingReservations, setPendingReservations] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [allReservations, setAllReservations] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({ startDate: "", endDate: "", announced: false });
+  const [sendingNotification, setSendingNotification] = useState(false);
 
   const [mountTime] = useState(() => Date.now());
   const notifiedResIds = useRef<Set<string>>(new Set());
@@ -152,10 +155,24 @@ export default function CoordenacaoDashboard() {
       }
     });
 
+    // Listen to all users (for bulk notifications target identification)
+    const unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot: any) => {
+      const list = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      setAllUsers(list);
+    });
+
+    // Listen to all reservations (to identify who has not registered yet)
+    const unsubscribeAllReservations = onSnapshot(collection(db, "reservations"), (snapshot: any) => {
+      const list = snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      setAllReservations(list);
+    });
+
     return () => {
       unsubscribeClasses();
       unsubscribePending();
       unsubscribeSettings();
+      unsubscribeUsers();
+      unsubscribeAllReservations();
     };
   }, [user]);
 
@@ -316,6 +333,79 @@ export default function CoordenacaoDashboard() {
     } catch (err) {
       console.error("Erro ao salvar configurações:", err);
       alert("Erro ao salvar período.");
+    }
+  };
+
+  // Envio de Notificações em Massa
+  const handleSendBulkNotification = async (type: string) => {
+    let title = "";
+    let body = "";
+    let target: "all" | "no-reservation" = "all";
+
+    switch (type) {
+      case "closing":
+        title = "⚠️ Matrículas se Encerrando!";
+        body = "O prazo para realizar a matrícula está chegando ao fim. Garanta a vaga do seu filho o quanto antes!";
+        target = "all";
+        break;
+      case "remind-signup":
+        title = "📝 Lembrete: Faça a Matrícula";
+        body = "Identificamos que você ainda não cadastrou a matrícula do seu filho. Acesse o app para concluir.";
+        target = "no-reservation";
+        break;
+      case "classes-soon":
+        title = "🎒 Aulas Começando em Breve!";
+        body = "As aulas começarão em breve! Lembre-se de regularizar a matrícula do seu filho para garantir tudo pronto.";
+        target = "all";
+        break;
+      case "check-status":
+        title = "🔍 Situação da Matrícula";
+        body = "Acesse o aplicativo para verificar se você já visualizou e regularizou a situação da matrícula do seu filho.";
+        target = "all";
+        break;
+      default:
+        return;
+    }
+
+    const parents = allUsers.filter((u: any) => u.role === "parent");
+    let targetParents = parents;
+
+    if (target === "no-reservation") {
+      targetParents = parents.filter((p: any) => {
+        const pId = p.uid || p.id;
+        const hasRes = allReservations.some((r: any) => r.parentId === pId);
+        return !hasRes;
+      });
+    }
+
+    if (targetParents.length === 0) {
+      alert("Nenhum responsável elegível encontrado para esta notificação.");
+      return;
+    }
+
+    if (!confirm(`Deseja enviar esta notificação para ${targetParents.length} responsável(eis)?\n\nTítulo: ${title}\nMensagem: ${body}`)) {
+      return;
+    }
+
+    setSendingNotification(true);
+    try {
+      for (const parent of targetParents) {
+        const parentId = parent.uid || parent.id;
+        await addDoc(collection(db, "notifications"), {
+          userId: parentId,
+          title,
+          body,
+          type: "SYSTEM_ALERT",
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+      alert("Notificações enviadas com sucesso!");
+    } catch (err) {
+      console.error("Erro ao enviar notificações em massa:", err);
+      alert("Erro ao enviar notificações.");
+    } finally {
+      setSendingNotification(false);
     }
   };
 
@@ -613,6 +703,52 @@ export default function CoordenacaoDashboard() {
               Salvar Configurações
             </button>
           </form>
+
+          <div className="card" style={{ marginTop: "24px" }}>
+            <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "8px" }}>Disparo de Alertas PWA</h3>
+            <p style={{ color: "var(--secondary)", fontSize: "13px", marginBottom: "20px", lineHeight: "1.4" }}>
+              Envie alertas diretamente para os aparelhos dos responsáveis. As notificações irão vibrar, aparecer no painel do sistema e atualizar a indicação visual (badge) no ícone do aplicativo.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                <button 
+                  onClick={() => handleSendBulkNotification("closing")}
+                  disabled={sendingNotification}
+                  className="btn btn-outline"
+                  style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 200px", justifyContent: "center" }}
+                >
+                  ⏳ Encerramento de Matrículas
+                </button>
+                <button 
+                  onClick={() => handleSendBulkNotification("remind-signup")}
+                  disabled={sendingNotification}
+                  className="btn btn-outline"
+                  style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 200px", justifyContent: "center" }}
+                >
+                  📝 Lembrete de Inscrição
+                </button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                <button 
+                  onClick={() => handleSendBulkNotification("classes-soon")}
+                  disabled={sendingNotification}
+                  className="btn btn-outline"
+                  style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 200px", justifyContent: "center" }}
+                >
+                  🎒 Início de Aulas Próximo
+                </button>
+                <button 
+                  onClick={() => handleSendBulkNotification("check-status")}
+                  disabled={sendingNotification}
+                  className="btn btn-outline"
+                  style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 200px", justifyContent: "center" }}
+                >
+                  🔍 Verificar Situação
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
