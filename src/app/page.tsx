@@ -11,6 +11,46 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const testNotification = async () => {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window)) {
+      alert("Seu navegador ou dispositivo não suporta notificações.");
+      return;
+    }
+
+    let permission = Notification.permission;
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+    }
+
+    if (permission !== "granted") {
+      alert("Permissão de notificação negada. Ative nas configurações do navegador para testar.");
+      return;
+    }
+
+    alert("Permissão concedida! Saia do app ou bloqueie a tela do celular agora. A notificação de teste disparará em 4 segundos...");
+
+    setTimeout(() => {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.showNotification("🏫 Matrícula Escolar PWA", {
+            body: "Teste: As matrículas estão se encerrando! Regularize a vaga de seu filho.",
+            icon: "/icons/icon-192.png",
+            badge: "/icons/icon-192.png",
+            vibrate: [200, 100, 200, 100, 200, 100, 400],
+            tag: "test-alert",
+            renotify: true
+          } as any);
+        });
+      } else {
+        new Notification("🏫 Matrícula Escolar PWA", {
+          body: "Teste: As matrículas estão se encerrando! Regularize a vaga de seu filho.",
+          icon: "/icons/icon-192.png"
+        });
+      }
+    }, 4000);
+  };
+
   useEffect(() => {
     // Redireciona automaticamente se já estiver logado
     const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
@@ -138,6 +178,27 @@ export default function Login() {
           {loading ? "Entrando..." : "Entrar"}
         </button>
       </form>
+
+      <div style={{
+        marginTop: "24px",
+        padding: "16px",
+        borderRadius: "var(--radius-md)",
+        border: "1px dashed var(--card-border)",
+        backgroundColor: "rgba(26, 115, 232, 0.04)",
+        textAlign: "center"
+      }}>
+        <p style={{ fontSize: "13px", color: "var(--secondary)", marginBottom: "12px", lineHeight: "1.4" }}>
+          Quer testar o alerta de notificação nativa (com vibração no celular)?
+        </p>
+        <button 
+          type="button"
+          onClick={testNotification}
+          className="btn btn-outline"
+          style={{ width: "100%", padding: "10px", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+        >
+          📳 Disparar Notificação de Teste
+        </button>
+      </div>
 
       <div style={{ textAlign: "center", marginTop: "30px" }}>
         <p style={{ color: "var(--secondary)", fontSize: "14px" }}>
