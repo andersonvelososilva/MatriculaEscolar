@@ -329,9 +329,35 @@ export default function CoordenacaoDashboard() {
         announced: settings.announced,
       });
 
-      alert("Configurações salvas com sucesso!");
+      // Helper para formatar data yyyy-mm-dd para dd/mm/yyyy
+      const formatDateBr = (dateStr: string) => {
+        if (!dateStr) return "";
+        const parts = dateStr.split("-");
+        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
+      };
+
+      const startBr = formatDateBr(settings.startDate);
+      const endBr = formatDateBr(settings.endDate);
+
+      // Obter todos os responsáveis cadastrados
+      const parents = allUsers.filter((u: any) => u.role === "parent");
+
+      // Enviar notificação de alteração para cada pai no banco
+      for (const parent of parents) {
+        const parentId = parent.uid || parent.id;
+        await addDoc(collection(db, "notifications"), {
+          userId: parentId,
+          title: "⚠️ Período de matrícula alterado",
+          body: `Atenção: O novo período de matrícula foi definido de ${startBr} a ${endBr}.`,
+          type: "PERIOD_CHANGED",
+          read: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      alert("Configurações salvas e todos os responsáveis notificados com sucesso!");
     } catch (err) {
-      console.error("Erro ao salvar configurações:", err);
+      console.error("Erro ao salvar configurações e notificar:", err);
       alert("Erro ao salvar período.");
     }
   };
