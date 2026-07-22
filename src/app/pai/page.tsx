@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   auth,
@@ -30,6 +30,57 @@ export default function PaiDashboard() {
   const [classesList, setClassesList] = useState<any[]>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+
+  const [mountTime] = useState(() => Date.now());
+  const notifiedNotifIds = useRef<Set<string>>(new Set());
+
+  // Solicitar permissão de notificação no carregamento do painel
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
+
+  // Monitorar novas notificações do Firestore e exibir notificações nativas
+  useEffect(() => {
+    if (notifications.length === 0) return;
+
+    notifications.forEach((notif) => {
+      const notifTime = notif.createdAt?.seconds ? notif.createdAt.seconds * 1000 : Date.now();
+      
+      // Se a notificação é recente e ainda não a exibimos como nativa
+      if (notifTime > mountTime - 10000 && !notifiedNotifIds.current.has(notif.id)) {
+        notifiedNotifIds.current.add(notif.id);
+        
+        // Disparar notificação nativa se não lida
+        if (!notif.read && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          const title = notif.title || "Novidade na Matrícula";
+          const body = notif.body || "Houve uma atualização na sua solicitação.";
+          
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.ready.then((reg) => {
+              reg.showNotification(title, {
+                body,
+                icon: "/icons/icon-192.png",
+                vibrate: [200, 100, 200],
+                badge: "/icons/icon-192.png",
+              } as any);
+            }).catch(() => {
+              new Notification(title, { body, icon: "/icons/icon-192.png" });
+            });
+          } else {
+            new Notification(title, { body, icon: "/icons/icon-192.png" });
+          }
+        }
+      } else {
+        // Registrar as já existentes para evitar notificação retroativa ao carregar
+        notifiedNotifIds.current.add(notif.id);
+      }
+    });
+  }, [notifications, mountTime]);
+
 
   // Form states
   const [selectedClass, setSelectedClass] = useState<any>(null);
@@ -273,7 +324,7 @@ export default function PaiDashboard() {
             onClick={() => setActiveTab("classes")}
             aria-label="Nova solicitação"
           >
-            ➕
+            +
           </button>
         </div>
       )}

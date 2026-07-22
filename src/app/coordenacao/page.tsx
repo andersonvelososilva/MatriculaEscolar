@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   auth,
@@ -32,6 +32,57 @@ export default function CoordenacaoDashboard() {
   const [classesList, setClassesList] = useState<any[]>([]);
   const [pendingReservations, setPendingReservations] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({ startDate: "", endDate: "", announced: false });
+
+  const [mountTime] = useState(() => Date.now());
+  const notifiedResIds = useRef<Set<string>>(new Set());
+
+  // Solicitar permissão de notificação no carregamento do painel
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
+
+  // Monitorar novas solicitações pendentes e exibir notificações
+  useEffect(() => {
+    if (pendingReservations.length === 0) return;
+
+    pendingReservations.forEach((res) => {
+      const resTime = res.createdAt?.seconds ? res.createdAt.seconds * 1000 : Date.now();
+      
+      // Se a solicitação foi criada depois do carregamento da página E ainda não notificamos
+      if (resTime > mountTime - 10000 && !notifiedResIds.current.has(res.id)) {
+        notifiedResIds.current.add(res.id);
+        
+        // Disparar notificação nativa
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          const title = "Nova Solicitação de Matrícula";
+          const body = `O aluno ${res.studentName} solicitou vaga na turma ${res.className}.`;
+          
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.ready.then((reg) => {
+              reg.showNotification(title, {
+                body,
+                icon: "/icons/icon-192.png",
+                vibrate: [200, 100, 200],
+                badge: "/icons/icon-192.png",
+              } as any);
+            }).catch(() => {
+              new Notification(title, { body, icon: "/icons/icon-192.png" });
+            });
+          } else {
+            new Notification(title, { body, icon: "/icons/icon-192.png" });
+          }
+        }
+      } else {
+        // Registrar as já existentes para evitar notificação retroativa
+        notifiedResIds.current.add(res.id);
+      }
+    });
+  }, [pendingReservations, mountTime]);
+
 
   // Class Form State (New / Edit)
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
@@ -458,7 +509,7 @@ export default function CoordenacaoDashboard() {
               }}
               aria-label="Nova turma"
             >
-              ➕
+              +
             </button>
           )}
         </div>
