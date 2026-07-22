@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import OfflineBanner from "./OfflineBanner";
 
 export const metadata: Metadata = {
   title: "Reserva de Matrícula Escolar PWA",
@@ -30,7 +31,10 @@ export default function RootLayout({
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
-      <body>{children}</body>
+      <body>
+        <OfflineBanner />
+        {children}
+      </body>
     </html>
   );
 }
