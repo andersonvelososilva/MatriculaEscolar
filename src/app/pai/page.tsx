@@ -317,15 +317,6 @@ export default function PaiDashboard() {
               </div>
             ))
           )}
-
-          {/* Floating Action Button */}
-          <button 
-            className="fab" 
-            onClick={() => setActiveTab("classes")}
-            aria-label="Nova solicitação"
-          >
-            +
-          </button>
         </div>
       )}
 
@@ -514,6 +505,16 @@ export default function PaiDashboard() {
             ))
           )}
         </div>
+      )}
+
+      {activeTab === "home" && (
+        <button 
+          className="fab" 
+          onClick={() => setActiveTab("classes")}
+          aria-label="Nova solicitação"
+        >
+          +
+        </button>
       )}
 
       {/* Persistent Bottom Tab Bar */}

@@ -495,23 +495,6 @@ export default function CoordenacaoDashboard() {
               </div>
             ))
           )}
-
-          {!isClassModalOpen && (
-            <button 
-              className="fab" 
-              onClick={() => {
-                setEditingClass(null);
-                setClassName("");
-                setClassPeriod("Manhã");
-                setClassTotalSpots(30);
-                setClassActive(true);
-                setIsClassModalOpen(true);
-              }}
-              aria-label="Nova turma"
-            >
-              +
-            </button>
-          )}
         </div>
       )}
 
@@ -631,6 +614,23 @@ export default function CoordenacaoDashboard() {
             </button>
           </form>
         </div>
+      )}
+
+      {activeTab === "classes" && !isClassModalOpen && (
+        <button 
+          className="fab" 
+          onClick={() => {
+            setEditingClass(null);
+            setClassName("");
+            setClassPeriod("Manhã");
+            setClassTotalSpots(30);
+            setClassActive(true);
+            setIsClassModalOpen(true);
+          }}
+          aria-label="Nova turma"
+        >
+          +
+        </button>
       )}
 
       {/* Persistent Bottom Tab Bar */}
